@@ -2,3 +2,6 @@ numpy
 asap3
 ase
 torch
+tqdm
+pymatgen
+lz4

@@ -9,7 +9,7 @@ import torch
 import dataset
 import densitymodel
 from runner import split_data
-from utils import write_cube_to_tar
+from guess.utils import write_cube_to_tar
 
 def get_arguments(arg_list=None):
     parser = argparse.ArgumentParser(

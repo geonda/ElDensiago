@@ -22,7 +22,7 @@ import ase.units
 from ase.calculators.vasp import VaspChargeDensity
 import asap3
 
-from layer import pad_and_stack
+from guess.layer import pad_and_stack
 
 def _cell_heights(cell_object):
     volume = cell_object.volume
@@ -149,7 +149,6 @@ class DensityDataDir(torch.utils.data.Dataset):
             index = self.key_to_idx[index]
         return self.extractfile(self.member_list[index])
 
-
 class DensityDataTar(torch.utils.data.Dataset):
     def __init__(self, tarpath, **kwargs):
         super().__init__(**kwargs)
@@ -190,7 +189,6 @@ class DensityDataTar(torch.utils.data.Dataset):
             index = self.key_to_idx[index]
         return self.extract_member(self.member_list[index])
 
-
 class AseNeigborListWrapper:
     """
     Wrapper around ASE neighborlist to have the same interface as asap3 neighborlist
@@ -224,7 +222,6 @@ class AseNeigborListWrapper:
         dist2 = np.sum(np.square(rel_positions), axis=1)
 
         return indices, rel_positions, dist2
-
 
 def grid_iterator_worker(atoms, meshgrid, probe_count, cutoff, slice_id_queue, result_queue):
     try:
@@ -312,7 +309,6 @@ class DensityGridIterator:
             for w in self.workers:
                 w.join()
             raise StopIteration
-
 
 def atoms_and_probe_sample_to_graph_dict(density, atoms, grid_pos, cutoff, num_probes):
     # Sample probes on the calculated grid
@@ -415,32 +411,34 @@ def probes_to_graph(atoms, probe_pos, cutoff, neighborlist=None, inv_cell_T=None
     if inv_cell_T is None:
         inv_cell_T = np.linalg.inv(atoms.get_cell().complete().T)
 
-    if hasattr(neighborlist, "get_neighbors_querypoint"):
-        results = neighborlist.get_neighbors_querypoint(probe_pos, cutoff)
-        atomic_numbers = atoms.get_atomic_numbers()
+    # Always construct a neighborlist on atoms extended with probes for consistent indexing
+    num_probes = probe_pos.shape[0]
+    probe_atoms = ase.Atoms(numbers=[0] * num_probes, positions=probe_pos)
+    atoms_with_probes = atoms.copy()
+    atoms_with_probes.extend(probe_atoms)
+    atomic_numbers = atoms_with_probes.get_atomic_numbers()
+
+    if (
+        np.any(atoms.get_cell().lengths() <= 0.0001)
+        or (
+            np.any(atoms.get_pbc())
+            and np.any(_cell_heights(atoms.get_cell()) < cutoff)
+        )
+    ):
+        neighborlist = AseNeigborListWrapper(cutoff, atoms_with_probes)
     else:
-        # Insert probe atoms
-        num_probes = probe_pos.shape[0]
-        probe_atoms = ase.Atoms(numbers=[0] * num_probes, positions=probe_pos)
-        atoms_with_probes = atoms.copy()
-        atoms_with_probes.extend(probe_atoms)
-        atomic_numbers = atoms_with_probes.get_atomic_numbers()
+        neighborlist = asap3.FullNeighborList(cutoff, atoms_with_probes)
 
-        if (
-            np.any(atoms.get_cell().lengths() <= 0.0001)
-            or (
-                np.any(atoms.get_pbc())
-                and np.any(_cell_heights(atoms.get_cell()) < cutoff)
-            )
-        ):
-            neighborlist = AseNeigborListWrapper(cutoff, atoms_with_probes)
-        else:
-            neighborlist = asap3.FullNeighborList(cutoff, atoms_with_probes)
+    # get neighbors for each probe atom, which now start at index len(atoms)
+    results = [neighborlist.get_neighbors(i + len(atoms), cutoff) for i in range(num_probes)]
 
-        results = [neighborlist.get_neighbors(i+len(atoms), cutoff) for i in range(num_probes)]
-
-    atom_positions = atoms.get_positions()
+    atom_positions = atoms_with_probes.get_positions()
     for i, (neigh_idx, neigh_vec, _) in enumerate(results):
+        # Filter indices out of range defensively
+        valid_mask = neigh_idx < len(atomic_numbers)
+        neigh_idx = neigh_idx[valid_mask]
+        neigh_vec = neigh_vec[valid_mask]
+
         neigh_atomic_species = atomic_numbers[neigh_idx]
 
         neigh_is_atom = neigh_atomic_species != 0
@@ -457,6 +455,55 @@ def probes_to_graph(atoms, probe_pos, cutoff, neighborlist=None, inv_cell_T=None
         probe_edges_displacement.append(neigh_origin_scaled)
 
     return probe_edges, probe_edges_displacement
+
+# def probes_to_graph(atoms, probe_pos, cutoff, neighborlist=None, inv_cell_T=None):
+#     probe_edges = []
+#     probe_edges_displacement = []
+#     if inv_cell_T is None:
+#         inv_cell_T = np.linalg.inv(atoms.get_cell().complete().T)
+
+#     if hasattr(neighborlist, "get_neighbors_querypoint"):
+#         results = neighborlist.get_neighbors_querypoint(probe_pos, cutoff)
+#         atomic_numbers = atoms.get_atomic_numbers()
+#     else:
+#         # Insert probe atoms
+#         num_probes = probe_pos.shape[0]
+#         probe_atoms = ase.Atoms(numbers=[0] * num_probes, positions=probe_pos)
+#         atoms_with_probes = atoms.copy()
+#         atoms_with_probes.extend(probe_atoms)
+#         atomic_numbers = atoms_with_probes.get_atomic_numbers()
+
+#         if (
+#             np.any(atoms.get_cell().lengths() <= 0.0001)
+#             or (
+#                 np.any(atoms.get_pbc())
+#                 and np.any(_cell_heights(atoms.get_cell()) < cutoff)
+#             )
+#         ):
+#             neighborlist = AseNeigborListWrapper(cutoff, atoms_with_probes)
+#         else:
+#             neighborlist = asap3.FullNeighborList(cutoff, atoms_with_probes)
+
+#         results = [neighborlist.get_neighbors(i+len(atoms), cutoff) for i in range(num_probes)]
+
+#     atom_positions = atoms.get_positions()
+#     for i, (neigh_idx, neigh_vec, _) in enumerate(results):
+#         neigh_atomic_species = atomic_numbers[neigh_idx]
+
+#         neigh_is_atom = neigh_atomic_species != 0
+#         neigh_atoms = neigh_idx[neigh_is_atom]
+#         self_index = np.ones_like(neigh_atoms) * i
+#         edges = np.stack((neigh_atoms, self_index), axis=1)
+
+#         neigh_pos = atom_positions[neigh_atoms]
+#         this_pos = probe_pos[i]
+#         neigh_origin = neigh_vec[neigh_is_atom] + this_pos - neigh_pos
+#         neigh_origin_scaled = np.round(inv_cell_T.dot(neigh_origin.T).T)
+
+#         probe_edges.append(edges)
+#         probe_edges_displacement.append(neigh_origin_scaled)
+
+#     return probe_edges, probe_edges_displacement
 
 def collate_list_of_dicts(list_of_dicts, pin_memory=False):
     # Convert from "list of dicts" to "dict of lists"
@@ -578,7 +625,6 @@ def _read_vasp(filecontent):
     atoms = vasp_charge.atoms[-1]  # separate atom positions
 
     return density, atoms, np.zeros(3)  # TODO: Can we always assume origin at 0,0,0?
-
 
 def _read_cube(filecontent):
     textbuf = io.StringIO(filecontent.decode())
