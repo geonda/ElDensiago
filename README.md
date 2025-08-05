@@ -44,6 +44,10 @@ The package requires:
 ```python
 from guess import MlDensity
 
+# List available models
+models = MlDensity.list_available_models()
+print(f"Available models: {models}")
+
 # Create a density predictor
 predictor = MlDensity(
     model='nmc_schnet',      # Choose pretrained model
@@ -55,6 +59,21 @@ predictor = MlDensity(
 
 # Predict density for a structure
 predictor.predict('path/to/structure.xyz')
+```
+
+### Package Data Access
+
+The package includes pretrained models that are automatically accessible:
+
+```python
+from guess import get_package_data_path
+
+# Get path to a specific model
+model_path = get_package_data_path("pretrained_models/nmc_schnet")
+print(f"Model directory: {model_path}")
+
+# Get path to model arguments
+args_path = get_package_data_path("pretrained_models/nmc_schnet/arguments.json")
 ```
 ## Output
 

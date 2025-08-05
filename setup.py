@@ -58,7 +58,7 @@ setup(
     },
     include_package_data=True,
     package_data={
-        "DenistyPredictor": [
+        "guess": [
             "pretrained_models/*/*.json",
             "pretrained_models/*/*.pth",
             "pretrained_models/*/*.txt",
@@ -68,7 +68,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "eldensiago=DenistyPredictor.__init__:main",
+            "eldensiago=guess.__init__:main",
         ],
     },
     keywords="machine learning, density functional theory, materials science, chemistry, physics",

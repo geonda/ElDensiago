@@ -10,10 +10,26 @@ import ase.io
 from pymatgen.io.vasp.outputs import Chgcar
 from pymatgen.io.ase import AseAtomsAdaptor
 import ase.io.cube
+import pkg_resources
 
-import densitymodel
-import dataset
+import guess.densitymodel as densitymodel
+import guess.dataset as dataset
 import guess.utils as utils
+
+
+def get_package_data_path(relative_path):
+    """
+    Get the absolute path to a file within the package data.
+    
+    :param relative_path: Relative path within the package
+    :type relative_path: str
+    :return: Absolute path to the file
+    :rtype: str
+    """
+    try:
+        return pkg_resources.resource_filename('guess', relative_path)
+    except Exception as e:
+        raise FileNotFoundError(f"Could not find package data: {relative_path}. Error: {e}")
 
 
 # Class for lazy creation of spatial grid coordinates
@@ -109,7 +125,8 @@ class MlDensity:
         :type compute_hessian_eig: bool
         """
         self.model_name = model
-        self.model_dir = f"pretrained_models/{self.model_name}/"
+        # Get the package directory for pretrained models
+        self.model_dir = pkg_resources.resource_filename('guess', f'pretrained_models/{self.model_name}/')
         self.device = torch.device(device)
         self.grid_step = grid_step
         self.vacuum = vacuum
@@ -138,23 +155,67 @@ class MlDensity:
 
 
     def _load_model(self):
-        with open(os.path.join(self.model_dir, "arguments.json"), "r") as f:
-            runner_args = json.load(f)
-        # Determine correct model class
-        if runner_args.get('use_painn_model', False):
-            model = densitymodel.PainnDensityModel(runner_args['num_interactions'],
-                                                    runner_args['node_size'],
-                                                    runner_args['cutoff'])
-        else:
-            model = densitymodel.DensityModel(runner_args['num_interactions'],
-                                              runner_args['node_size'],
-                                              runner_args['cutoff'])
-        model.to(self.device)
-        state_dict = torch.load(os.path.join(self.model_dir, "best_model.pth"),
-                                map_location=self.device)
-        model.load_state_dict(state_dict["model"])
-        logging.info("Model loaded.")
-        return model, runner_args["cutoff"]
+        try:
+            # Load model arguments
+            args_path = os.path.join(self.model_dir, "arguments.json")
+            if not os.path.exists(args_path):
+                raise FileNotFoundError(f"Model arguments file not found: {args_path}")
+                
+            with open(args_path, "r") as f:
+                runner_args = json.load(f)
+                
+            # Determine correct model class
+            if runner_args.get('use_painn_model', False):
+                model = densitymodel.PainnDensityModel(runner_args['num_interactions'],
+                                                        runner_args['node_size'],
+                                                        runner_args['cutoff'])
+            else:
+                model = densitymodel.DensityModel(runner_args['num_interactions'],
+                                                  runner_args['node_size'],
+                                                  runner_args['cutoff'])
+            model.to(self.device)
+            
+            # Load model weights
+            model_path = os.path.join(self.model_dir, "best_model.pth")
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(f"Model weights file not found: {model_path}")
+                
+            state_dict = torch.load(model_path, map_location=self.device)
+            model.load_state_dict(state_dict["model"])
+            logging.info(f"Model '{self.model_name}' loaded successfully from {self.model_dir}")
+            return model, runner_args["cutoff"]
+            
+        except Exception as e:
+            logging.error(f"Failed to load model '{self.model_name}': {e}")
+            logging.error(f"Model directory: {self.model_dir}")
+            logging.error(f"Available models: {self._list_available_models()}")
+            raise
+    
+    def _list_available_models(self):
+        """List all available pretrained models."""
+        try:
+            models_dir = pkg_resources.resource_filename('guess', 'pretrained_models')
+            if os.path.exists(models_dir):
+                return [d for d in os.listdir(models_dir) 
+                       if os.path.isdir(os.path.join(models_dir, d))]
+            else:
+                return []
+        except Exception:
+            return []
+    
+    @classmethod
+    def list_available_models(cls):
+        """List all available pretrained models."""
+        try:
+            models_dir = pkg_resources.resource_filename('guess', 'pretrained_models')
+            if os.path.exists(models_dir):
+                models = [d for d in os.listdir(models_dir) 
+                         if os.path.isdir(os.path.join(models_dir, d))]
+                return sorted(models)
+            else:
+                return []
+        except Exception:
+            return []
 
     @staticmethod
     def ceil_float(x, step_size):
