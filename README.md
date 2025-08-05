@@ -42,7 +42,7 @@ The package requires:
 ### Python API
 
 ```python
-from DenistyPredictor import MlDensity
+from guess import MlDensity
 
 # Create a density predictor
 predictor = MlDensity(
