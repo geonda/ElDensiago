@@ -241,12 +241,15 @@ def grid_iterator_worker(atoms, meshgrid, probe_count, cutoff, slice_id_queue, r
         result_queue.put((slice_id, res))
 
 class DensityGridIterator:
-    def __init__(self, densitydict, probe_count: int, cutoff: float, set_pbc_to: Optional[bool] = None):
+    def __init__(self, densitydict, probe_count: int, cutoff: float, set_pbc_to: Optional[bool] = None, num_workers=None):
         num_positions = np.prod(densitydict["grid_position"].shape[0:3])
         self.num_slices = int(math.ceil(num_positions / probe_count))
         self.probe_count = probe_count
         self.cutoff = cutoff
         self.set_pbc = set_pbc_to
+        if num_workers is None:
+            num_workers = multiprocessing.cpu_count()
+        self.num_workers = num_workers
 
         if self.set_pbc is not None:
             self.atoms = densitydict["atoms"].copy()
@@ -289,7 +292,7 @@ class DensityGridIterator:
         self.finished_slices = dict()
         for i in range(self.num_slices):
             slice_id_queue.put(i)
-        self.workers = [multiprocessing.Process(target=grid_iterator_worker, args=(self.atoms, self.meshgrid, self.probe_count, self.cutoff, slice_id_queue, self.result_queue)) for _ in range(6)]
+        self.workers = [multiprocessing.Process(target=grid_iterator_worker, args=(self.atoms, self.meshgrid, self.probe_count, self.cutoff, slice_id_queue, self.result_queue)) for _ in range(self.num_workers)]
         for w in self.workers:
             w.start()
         return self

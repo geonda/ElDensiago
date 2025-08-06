@@ -5,3 +5,4 @@ torch
 tqdm
 pymatgen
 lz4
+ipykernel

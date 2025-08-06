@@ -12,6 +12,8 @@ from pymatgen.io.ase import AseAtomsAdaptor
 import ase.io.cube
 import pkg_resources
 
+from torch.utils.data import Dataset
+
 import guess.densitymodel as densitymodel
 import guess.dataset as dataset
 import guess.utils as utils
@@ -32,6 +34,25 @@ def get_package_data_path(relative_path):
         raise FileNotFoundError(f"Could not find package data: {relative_path}. Error: {e}")
 
 
+
+class DensityGridDataset(Dataset):
+    def __init__(self, density_dict, probe_count, cutoff, set_pbc_to=None):
+        self.density_dict = density_dict
+        self.probe_count = probe_count
+        self.cutoff = cutoff
+        self.set_pbc_to = set_pbc_to
+        # Instantiate the grid iterator for internal use
+        self.grid_iterator = dataset.DensityGridIterator(density_dict, probe_count, cutoff, set_pbc_to)
+
+        # Convert iterator to list for indexed access (optional; better if DensityGridIterator supports __len__ and __getitem__)
+        self.grid_probe_list = list(self.grid_iterator)
+
+    def __len__(self):
+        return len(self.grid_probe_list)
+
+    def __getitem__(self, idx):
+        # Return the probe graph dict for the idx-th grid slice
+        return self.grid_probe_list[idx]
 # Class for lazy creation of spatial grid coordinates
 class LazyMeshGrid:
     """Creates a spatial grid for calculating atomic densities."""
@@ -91,6 +112,7 @@ class MlDensity:
         grid_step=0.05,
         vacuum=1.0,
         probe_count=5000,
+        num_workers=8,
         ignore_pbc=False,
         force_pbc=False,
         output_dir="./model_prediction",
@@ -125,6 +147,7 @@ class MlDensity:
         :type compute_hessian_eig: bool
         """
         self.model_name = model
+        self.num_workers = num_workers
         # Get the package directory for pretrained models
         self.model_dir = pkg_resources.resource_filename('guess', f'pretrained_models/{self.model_name}/')
         self.device = torch.device(device)
@@ -306,6 +329,7 @@ class MlDensity:
         chgcar.write_file(chgcar_path)
         logging.info("Cube converted to CHGCAR successfully.")
 
+
     def predict(self, atoms_file):
         """
         Predicts the electronic density for a given atomic structure.
@@ -328,6 +352,19 @@ class MlDensity:
         elif self.force_pbc:
             set_pbc = True
 
+
+        # from torch.utils.data import DataLoader
+
+        # density_dataset = DensityGridDataset(density_dict, self.probe_count, self.cutoff, set_pbc_to=set_pbc)
+        # dataloader = DataLoader(
+        #     density_dataset,
+        #     batch_size=1,                 # Usually 1 because each item is already a batch of probes
+        #     shuffle=False,                # Do not shuffle since grid order matters for filling full_density
+        #     num_workers=8,                # Set the number of workers to parallelize loading
+        #     pin_memory=(device.type == "cuda"),
+        #     collate_fn=dataset.collate_list_of_dicts  # Your existing collate function for probe graphs
+        # )
+
         start_time = timeit.default_timer()
 
         with torch.no_grad():
@@ -349,7 +386,7 @@ class MlDensity:
             logging.debug("Atomic representations calculated.")
 
             density_iter = dataset.DensityGridIterator(
-                density_dict, self.probe_count, self.cutoff, set_pbc_to=set_pbc
+                density_dict, self.probe_count, self.cutoff, set_pbc_to=set_pbc, num_workers=self.num_workers
             )
 
             for slice_id, probe_graph_dict in tqdm(
@@ -408,3 +445,4 @@ class MlDensity:
         chgcar = Chgcar(structure, data)
         chgcar.write_file(os.path.join(self.output_dir, "CHGCAR"))
         logging.info(f"Saved predicted density to CHGCAR at {self.output_dir}/CHGCAR")
+
