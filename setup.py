@@ -64,6 +64,11 @@ setup(
             "pretrained_models/*/*.txt",
             "pretrained_models/*/*.log",
             "pretrained_models/*/*.sh",
+            "charge3net_core/configs/*/*.yaml",
+            "charge3net_core/configs/*/data/*.yaml",
+            "charge3net_core/configs/*/model/*.yaml",
+            "charge3net_core/configs/*/data/*/*.yaml",
+            "charge3net_core/models/*.pt",
         ],
     },
     entry_points={

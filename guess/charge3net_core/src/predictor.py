@@ -101,7 +101,7 @@ class ChargeDensityPredictor:
             if not hasattr(model_config, '_target_'):
                 # Fallback to a basic E3 model configuration
                 model_config = {
-                    "_target_": "guess.charge3net_core.src.charge3net.models.e3.E3DensityModel",
+                    "_target_": "content.ElDensiago.guess.charge3net_core.src.charge3net.models.e3.E3DensityModel",
                     "num_interactions": 3,
                     "num_neighbors": 20,
                     "mul": 500,

@@ -17,8 +17,7 @@ from torch.utils.data import Dataset
 import guess.densitymodel as densitymodel
 import guess.dataset as dataset
 import guess.utils as utils
-
-from guess.charge3net_core import *
+from guess.charge3net_core.src import charge3net
 
 def get_package_data_path(relative_path):
     """
