@@ -281,3 +281,7 @@ secrets.json
 ehthumbs.db
 Icon?
 Thumbs.db 
+
+predictions/
+predictions_c3n/
+data/output/*
