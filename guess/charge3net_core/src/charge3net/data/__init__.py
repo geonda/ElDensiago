@@ -5,3 +5,4 @@ from .dataset import DensityDatamodule
 __all__ = [
     "DensityDatamodule"
 ]
+from . import *
