@@ -10,7 +10,7 @@ import ase.io
 from pymatgen.io.vasp.outputs import Chgcar
 from pymatgen.io.ase import AseAtomsAdaptor
 import ase.io.cube
-import pkg_resources
+import importlib.resources
 
 from torch.utils.data import Dataset
 
@@ -18,6 +18,7 @@ import guess.densitymodel as densitymodel
 import guess.dataset as dataset
 import guess.utils as utils
 
+from guess.charge3net_core import *
 
 def get_package_data_path(relative_path):
     """
@@ -29,7 +30,7 @@ def get_package_data_path(relative_path):
     :rtype: str
     """
     try:
-        return pkg_resources.resource_filename('guess', relative_path)
+        return str(importlib.resources.files('guess') / relative_path)
     except Exception as e:
         raise FileNotFoundError(f"Could not find package data: {relative_path}. Error: {e}")
 
@@ -149,7 +150,7 @@ class MlDensity:
         self.model_name = model
         self.num_workers = num_workers
         # Get the package directory for pretrained models
-        self.model_dir = pkg_resources.resource_filename('guess', f'pretrained_models/{self.model_name}/')
+        self.model_dir = str(importlib.resources.files('guess') / f'pretrained_models/{self.model_name}/')
         self.device = torch.device(device)
         self.grid_step = grid_step
         self.vacuum = vacuum
@@ -217,7 +218,7 @@ class MlDensity:
     def _list_available_models(self):
         """List all available pretrained models."""
         try:
-            models_dir = pkg_resources.resource_filename('guess', 'pretrained_models')
+            models_dir = str(importlib.resources.files('guess') / 'pretrained_models')
             if os.path.exists(models_dir):
                 return [d for d in os.listdir(models_dir) 
                        if os.path.isdir(os.path.join(models_dir, d))]
@@ -230,7 +231,7 @@ class MlDensity:
     def list_available_models(cls):
         """List all available pretrained models."""
         try:
-            models_dir = pkg_resources.resource_filename('guess', 'pretrained_models')
+            models_dir = str(importlib.resources.files('guess') / 'pretrained_models')
             if os.path.exists(models_dir):
                 models = [d for d in os.listdir(models_dir) 
                          if os.path.isdir(os.path.join(models_dir, d))]
