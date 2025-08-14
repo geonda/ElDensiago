@@ -488,7 +488,7 @@ class RealChargeDensityPredictor:
             preds = torch.cat(all_preds, dim=1)
         else:
             preds = self.model(batch)
-        torch.mps.empty_cache()
+        # torch.mps.empty_cache()
         return {
             "preds": preds,
             "filename": batch["filename"][0],
